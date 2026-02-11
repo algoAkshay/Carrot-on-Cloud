@@ -1,0 +1,29 @@
+create table contest_result
+(
+    contest_id  int                                 not null,
+    handle      varchar(100)                        not null,
+    performance VARCHAR(10)                         not null,
+    delta       VARCHAR(10)                         not null,
+    rating      int                                 not null,
+    created_at  timestamp default current_timestamp not null,
+    updated_at  timestamp default current_timestamp not null on update current_timestamp,
+    constraint contest_result_pk
+        primary key (contest_id, handle)
+);
+
+create index contest_result_handle_contest_id_index
+    on contest_result (handle, contest_id);
+
+
+create table ratingtable
+(
+    handle varchar(100) not null
+        primary key,
+    rating int          not null
+);
+
+mysql -h database-2.chwko88ykrsu.us-west-2.rds.amazonaws.com \
+     -u admin \
+     -p
+
+mysql password: Q3AJJWp_GVb0_!TAEFKj1vyZ(A9U
