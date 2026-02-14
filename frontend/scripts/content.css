@@ -1,0 +1,85 @@
+.carrot-performance {
+    text-shadow: 0 0 0.5px currentColor;
+}
+.carrot-delta {
+    text-align: center;
+    font-weight: bold;
+}
+/* Newbie ( < 1200 ) */
+.newbie {
+    color: #808080; /* gray */
+}
+
+/* Pupil ( 1200 – 1399 ) */
+.pupil {
+    color: #008000; /* green */
+}
+
+/* Specialist ( 1400 – 1599 ) */
+.specialist {
+    color: #03a89e; /* cyan */
+}
+
+/* Expert ( 1600 – 1899 ) */
+.expert {
+    color: #0000ff; /* blue */
+}
+
+/* Candidate Master ( 1900 – 2099 ) */
+.candidate-master {
+    color: #aa00aa; /* violet */
+}
+
+/* Master ( 2100 – 2299 ) */
+.master {
+    color: #ff8c00; /* orange */
+}
+
+/* International Master ( 2300 – 2399 ) */
+.international-master {
+    color: #ff8c00; /* orange */
+    font-weight: bold;
+}
+
+/* Grandmaster ( 2400 – 2599 ) */
+.grandmaster {
+    color: #ff0000; /* red */
+}
+
+/* International Grandmaster ( 2600 – 2999 ) */
+.international-grandmaster {
+    color: #ff0000; /* red */
+    font-weight: bold;
+}
+
+/* Legendary Grandmaster ( ≥ 3000 ) */
+.legendary-grandmaster {
+    color: #ff0000; /* red */
+    font-weight: bold;
+}
+
+/* Legendary Grandmaster first letter black (CF style) */
+.legendary-grandmaster::first-letter {
+    color: black;
+}
+
+
+
+.carrot-delta-positive {
+    color: green;
+}
+.carrot-delta-negative {
+    color: red;
+}
+.carrot-pref-good{
+    color: green;
+}
+
+
+.carrot-dark {
+    background-color: #f7f7f7;
+}
+
+.carrot-display-none {
+    display: none;
+}
