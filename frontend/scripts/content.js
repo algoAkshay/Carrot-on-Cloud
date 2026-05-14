@@ -99,9 +99,9 @@ function updatePage(res){
 }
 
 const testURL="http://127.0.0.1:3000/contest";
-const apiURL="https://neverspot.mooo.com/contest";
+// const apiURL="http://127.0.0.1:3000/contest";
 
-fetch(apiURL,{
+fetch(testURL,{
     method:"POST",
     headers: {
         'Content-Type': 'application/json', // Indicate the content type
