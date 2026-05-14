@@ -29,18 +29,16 @@ export async function pushContestData(contestId){
 
         batch = contestData.slice(i,Math.min(contestData.length,i+batchSize)).map(user => [contestId,user.handle,user.performance,user.delta,user.rating])
         try {
-            console.log(`${batchNumber} insert ho raha hai`);
+            console.log(`Inserting batch ${batchNumber}...`);
             await pool.query(sql, [batch]);
         } catch (e) {
             console.log(e);
-            console.log(`${batchNumber} dalte waqt error a gaya bhai`);
+            console.log(`Error inserting batch ${batchNumber}`);
             break;
         }
         await sleep(sleepTime);
     }
 }
-// await pushContestData(2176);
-
 
 async function contestNeedsRefresh(contestId) {
 
@@ -53,35 +51,27 @@ async function contestNeedsRefresh(contestId) {
         [contestId]
     );
 
-
     const lastUpdate = rows[0].last_update;
     if (!lastUpdate) {
-        return true; // no data → must fetch
+        return true;
     }
 
     const diffMs = Date.now() - new Date(lastUpdate).getTime();
-
     const fiveMinutes = 5 * 60 * 1000;
-    const tenHours = 10 * 60 * 60 * 1000;
 
-    return fiveMinutes<diffMs  && diffMs <= tenHours;
+    return diffMs >= fiveMinutes;
 }
 
-
-// Do the query
 export async function queryContestResults(contestID, userList) {
 
     if (!userList || userList.length === 0) {
         return [];
     }
 
-
-
     if (await contestNeedsRefresh(contestID)){
 
         const lockKey = `lock:contest:${contestID}`;
         const sleep = ms => new Promise(r => setTimeout(r, ms));
-
 
         const acquired = await redis.set(lockKey, "1", {
             NX: true,
@@ -91,18 +81,17 @@ export async function queryContestResults(contestID, userList) {
         if (acquired) {
             try {
                 await pushContestData(contestID);
+            } catch (error) {
+                console.log("Error pushing contest data:", error);
             } finally {
                 await redis.del(lockKey);
             }
-        }else {
+        } else {
             while ((await redis.get(lockKey)) === "1") {
                 await sleep(1000);
             }
         }
     }
-
-
-
 
     const placeholders = userList.map(() => "?").join(",");
 
@@ -113,11 +102,14 @@ export async function queryContestResults(contestID, userList) {
           AND handle IN (${placeholders})
     `;
 
-    const [rows] = await pool.execute(sql, [
-        contestID,
-        ...userList
-    ]);
-
-    return rows;
+    try {
+        const [rows] = await pool.execute(sql, [
+            contestID,
+            ...userList
+        ]);
+        return rows;
+    } catch (error) {
+        console.log("Query error:", error);
+        throw error;
+    }
 }
-
