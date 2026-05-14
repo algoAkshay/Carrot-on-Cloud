@@ -19,7 +19,7 @@ try {
 }catch(e) {
     console.log(e);
 }
-await client.flushAll('SYNC');
+// await client.flushAll('SYNC');
 console.log("✅ RedIs is connected !!!!")
 export  default  client;
 
