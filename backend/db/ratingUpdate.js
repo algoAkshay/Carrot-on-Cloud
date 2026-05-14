@@ -16,7 +16,7 @@ async function getData() {
             }
         }
     );
-    console.log("data mil gaya");
+    console.log("Rating data fetched successfully");
 
     const userList = res.data.result;
 
@@ -28,7 +28,7 @@ async function getData() {
             [user.handle,user.rating]
         )
     });
-    console.log(`${cnt} row update hua`);
+    console.log(`${cnt} rows updated`);
 }
 
 await getData();

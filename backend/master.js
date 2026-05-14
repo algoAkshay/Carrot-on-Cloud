@@ -1,14 +1,10 @@
 import "dotenv/config";
 import express from "express";
-import  cors from "cors";
+import cors from "cors";
 import {queryContestResults} from "./db/db.js";
-
-
 
 const app = express();
 app.use(cors());
-
-
 app.use(express.json());
 
 app.get("/", (req, res) => {
@@ -23,21 +19,17 @@ app.post("/contest", async (req, res) => {
     console.log("Request Received");
     let { contestId, userList } = req.body;
 
-
     userList = userList.map(u => u.trim());
-
-
 
     try {
         const data = await queryContestResults(contestId, userList);
         res.json(data);
     } catch (error) {
+        console.log("FULL ERROR:", error);
         res.status(500).json({ error: "Internal server error" });
     }
 
     console.log("Response Sent!!!!!");
 });
-
-
 
 app.listen(3000);
