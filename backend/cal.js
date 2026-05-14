@@ -184,10 +184,10 @@ export class RatingCalculator {
 
 
 
-// new Code written by me
-let contestants=[];
-async function getUser(contestID){
-    const standings=await fetch(` https://codeforces.com/api/contest.standings?contestId=${contestID}`);
+
+// let contestants=[];
+async function getUser(contestID,contestants){
+    const standings=await fetch(`https://codeforces.com/api/contest.standings?contestId=${contestID}`);
     const data=await standings.json();
 
     const result=data["result"];
@@ -219,10 +219,11 @@ async function getUser(contestID){
 
 // Main function to use
 export default async function getDataForContest(contestId){
-    await getUser(contestId)
+    const contestants = [];
+    await getUser(contestId,contestants)
     return await predict(contestants, true);
 }
-getDataForContest(2191);
+// getDataForContest(2191);
 
 
 // const data=await getDateForContest(2176);
