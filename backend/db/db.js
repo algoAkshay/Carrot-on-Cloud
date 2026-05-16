@@ -58,8 +58,8 @@ async function contestNeedsRefresh(contestId) {
 
     const diffMs = Date.now() - new Date(lastUpdate).getTime();
     const fiveMinutes = 5 * 60 * 1000;
-
-    return diffMs >= fiveMinutes;
+    const tenHours = 10 * 60 * 60 * 1000;
+    return fiveMinutes < diffMs && diffMs <= tenHours;  
 }
 
 export async function queryContestResults(contestID, userList) {
