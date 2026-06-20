@@ -34,7 +34,7 @@ export async function pushContestData(contestId){
         } catch (e) {
             console.log(e);
             console.log(`Error inserting batch ${batchNumber}`);
-            break;
+            throw e;
         }
         await sleep(sleepTime);
     }
@@ -62,53 +62,80 @@ async function contestNeedsRefresh(contestId) {
     return fiveMinutes < diffMs && diffMs <= tenHours;  
 }
 
+function isDbConnectionError(error) {
+    return ["ECONNREFUSED", "ETIMEDOUT", "ENOTFOUND", "EHOSTUNREACH"].includes(error?.code);
+}
+
+function filterContestData(contestId, contestData, userList) {
+    const requestedUsers = new Set(userList);
+    return contestData
+        .filter(user => requestedUsers.has(user.handle))
+        .map(user => ({
+            contest_id: contestId,
+            handle: user.handle,
+            performance: user.performance,
+            delta: user.delta,
+            rating: user.rating
+        }));
+}
+
+async function queryContestResultsWithoutDb(contestID, userList) {
+    const contestData = await getDateForContest(contestID);
+    return filterContestData(contestID, contestData, userList);
+}
+
 export async function queryContestResults(contestID, userList) {
 
     if (!userList || userList.length === 0) {
         return [];
     }
 
-    if (await contestNeedsRefresh(contestID)){
+    try {
+        if (await contestNeedsRefresh(contestID)){
 
-        const lockKey = `lock:contest:${contestID}`;
-        const sleep = ms => new Promise(r => setTimeout(r, ms));
+            const lockKey = `lock:contest:${contestID}`;
+            const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-        const acquired = await redis.set(lockKey, "1", {
-            NX: true,
-            PX: 2 * 60 * 1000,
-        });
+            const acquired = await redis.set(lockKey, "1", {
+                NX: true,
+                PX: 2 * 60 * 1000,
+            });
 
-        if (acquired) {
-            try {
-                await pushContestData(contestID);
-            } catch (error) {
-                console.log("Error pushing contest data:", error);
-            } finally {
-                await redis.del(lockKey);
-            }
-        } else {
-            while ((await redis.get(lockKey)) === "1") {
-                await sleep(1000);
+            if (acquired) {
+                try {
+                    await pushContestData(contestID);
+                } catch (error) {
+                    console.log("Error pushing contest data:", error);
+                    throw error;
+                } finally {
+                    await redis.del(lockKey);
+                }
+            } else {
+                while ((await redis.get(lockKey)) === "1") {
+                    await sleep(1000);
+                }
             }
         }
-    }
 
-    const placeholders = userList.map(() => "?").join(",");
+        const placeholders = userList.map(() => "?").join(",");
 
-    const sql = `
-        SELECT *
-        FROM contest_results
-        WHERE contest_id = ?
-          AND handle IN (${placeholders})
-    `;
+        const sql = `
+            SELECT *
+            FROM contest_results
+            WHERE contest_id = ?
+              AND handle IN (${placeholders})
+        `;
 
-    try {
         const [rows] = await pool.execute(sql, [
             contestID,
             ...userList
         ]);
         return rows;
     } catch (error) {
+        if (isDbConnectionError(error)) {
+            console.log("MySQL unavailable, calculating contest data without DB cache:", error.code);
+            return await queryContestResultsWithoutDb(contestID, userList);
+        }
         console.log("Query error:", error);
         throw error;
     }

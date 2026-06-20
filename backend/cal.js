@@ -1,5 +1,6 @@
 import FFTConv from './conv.js';
 import binarySearch from './binsearch.js'
+import pool from './db/mysql.js';
 
 /**
  * Rating calculation code adapted from TLE at
@@ -15,6 +16,7 @@ import binarySearch from './binsearch.js'
 
 const PRINT_PERFORMANCE = false;
 const DEFAULT_RATING = 1400;
+let codeforcesRatingsPromise = null;
 
 export class Contestant {
     constructor(handle, points, penalty, rating) {
@@ -185,10 +187,58 @@ export class RatingCalculator {
 
 
 
+async function loadRatings(contestants) {
+    if (contestants.length === 0) {
+        return;
+    }
+
+    let ratings;
+    try {
+        const handles = contestants.map(user => user.handle);
+        const placeholders = handles.map(() => "?").join(",");
+        const [rows] = await pool.execute(
+            `SELECT handle, rating FROM ratingtable WHERE handle IN (${placeholders})`,
+            handles
+        );
+        ratings = new Map(rows.map(row => [row.handle, row.rating]));
+    } catch (error) {
+        console.log("Could not load ratings from MySQL, falling back to Codeforces ratedList:", error.code ?? error.message);
+        ratings = await loadCodeforcesRatings();
+    }
+
+    for (const user of contestants) {
+        const rating = ratings.get(user.handle);
+        user.rating = rating == null ? DEFAULT_RATING : rating;
+        user.effectiveRating = user.rating;
+    }
+}
+
+async function loadCodeforcesRatings() {
+    codeforcesRatingsPromise ??= fetch(
+        "https://codeforces.com/api/user.ratedList?activeOnly=false&includeRetired=true",
+        {
+            headers: {
+                "User-Agent": "carrot-on-cloud"
+            }
+        }
+    ).then(async res => {
+        const data = await res.json();
+        if (data.status !== "OK") {
+            throw new Error(`Codeforces API returned status ${data.status}: ${data.comment ?? "unknown error"}`);
+        }
+        return new Map(data.result.map(user => [user.handle, user.rating]));
+    });
+
+    return codeforcesRatingsPromise;
+}
+
 // let contestants=[];
 async function getUser(contestID,contestants){
     const standings=await fetch(`https://codeforces.com/api/contest.standings?contestId=${contestID}`);
     const data=await standings.json();
+    if (data.status !== "OK") {
+        throw new Error(`Codeforces API returned status ${data.status}: ${data.comment ?? "unknown error"}`);
+    }
 
     const result=data["result"];
 
@@ -201,18 +251,7 @@ async function getUser(contestID,contestants){
         );
         contestants.push(c);
     }
-    let contestEnded=result["contest"]["phase"];
-
-
-
-
-    // finding rating for each user
-    for(const user of contestants){
-
-        // fetch user rating using mysqkl
-        // user.rating=rating[user.handle];
-        user.effectiveRating = user.rating == null ? DEFAULT_RATING : user.rating;
-    }
+    await loadRatings(contestants);
 }
 
 

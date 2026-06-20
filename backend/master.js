@@ -17,11 +17,19 @@ app.get("/", (req, res) => {
 app.post("/contest", async (req, res) => {
 
     console.log("Request Received");
-    let { contestId, userList } = req.body;
-
-    userList = userList.map(u => u.trim());
 
     try {
+        let { contestId, userList } = req.body;
+        contestId = Number(contestId);
+
+        if (!Number.isInteger(contestId) || contestId <= 0 || !Array.isArray(userList)) {
+            return res.status(400).json({ error: "Invalid contestId or userList" });
+        }
+
+        userList = userList
+            .map(u => String(u).trim())
+            .filter(Boolean);
+
         const data = await queryContestResults(contestId, userList);
         res.json(data);
     } catch (error) {
@@ -32,4 +40,7 @@ app.post("/contest", async (req, res) => {
     console.log("Response Sent!!!!!");
 });
 
-app.listen(3000);
+const port = Number(process.env.PORT) || 3000;
+app.listen(port, () => {
+    console.log(`Server listening on port ${port}`);
+});

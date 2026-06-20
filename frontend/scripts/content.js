@@ -1,13 +1,8 @@
 
 // extracting contest id
-const contest_Title=document.querySelector(".contest-name a").href;
-let contestId=0;
-for(const c of contest_Title){
-    if('0'<=c && c<='9'){
-        contestId*=10;
-        contestId+=c-'0';
-    }
-}
+const contest_Title=document.querySelector(".contest-name a")?.href ?? window.location.href;
+const contestMatch = contest_Title.match(/\/contest\/(\d+)/);
+const contestId = contestMatch ? Number(contestMatch[1]) : 0;
 
 const userList=new Set();
 
@@ -19,6 +14,10 @@ for(const user of table){
 const queryData={contestId,userList:[...userList]};
 
 function updatePage(res){
+    if (document.querySelector(".carrot-performance-header")) {
+        return;
+    }
+
     const data={};
     for(const user of res){
         data[user.handle]={"delta":user.delta,"performance":user.performance};
@@ -26,6 +25,8 @@ function updatePage(res){
     const location =document.querySelector(".standings tr");
     const pref=document.createElement("th")
     const delta=document.createElement("th")
+    pref.classList.add("carrot-performance-header");
+    delta.classList.add("carrot-delta-header");
     pref.textContent="Performance";
     delta.textContent="Delta";
     location.append(pref);
@@ -33,9 +34,12 @@ function updatePage(res){
 
     const table = document.querySelectorAll(".standings tbody tr");
 
-    for(let i=1;i<table.length-1;i++){
+    for(let i=0;i<table.length;i++){
         const user=table[i];
         const handle=user.querySelector(".contestant-cell")
+        if (!handle) {
+            continue;
+        }
 
         const userName=handle.textContent.replace(/[ *#]/g, "").trim();
 
@@ -101,17 +105,25 @@ function updatePage(res){
 const testURL="http://127.0.0.1:3000/contest";
 // const apiURL="http://127.0.0.1:3000/contest";
 
-fetch(testURL,{
-    method:"POST",
-    headers: {
-        'Content-Type': 'application/json', // Indicate the content type
-    },
-    body:JSON.stringify(queryData),
-}).then(res=>res.json())
-    .then((res)=> {
-        // console.log(res)
+if (contestId > 0 && queryData.userList.length > 0) {
+    fetch(testURL,{
+        method:"POST",
+        headers: {
+            'Content-Type': 'application/json', // Indicate the content type
+        },
+        body:JSON.stringify(queryData),
+    }).then(async res => {
+        if (!res.ok) {
+            throw new Error(`Backend returned ${res.status}`);
+        }
+        return res.json();
+    }).then((res)=> {
+        if (!Array.isArray(res)) {
+            throw new Error("Backend response is not a list");
+        }
         updatePage(res);
     }) .catch(error => {
-    console.error('Error fetching data:', error); // Handle network errors
-});
+        console.error('Error fetching data:', error); // Handle network errors
+    });
+}
 

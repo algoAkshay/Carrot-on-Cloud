@@ -20,17 +20,17 @@ async function getData() {
 
     const userList = res.data.result;
 
-    let cnt=0;
-    userList.forEach(user => {
-        cnt++;
-        pool.execute(
-            "INSERT INTO carrot.ratingtable (handle, rating) values (?,?) on duplicate key update rating=values(rating)",
-            [user.handle,user.rating]
-        )
-    });
-    console.log(`${cnt} rows updated`);
+    const values = userList.map(user => [user.handle, user.rating]);
+    await pool.query(
+        `INSERT INTO ratingtable (handle, rating)
+         VALUES ?
+         ON DUPLICATE KEY UPDATE rating = VALUES(rating)`,
+        [values]
+    );
+    console.log(`${values.length} rows updated`);
 }
 
 await getData();
+await pool.end();
 
 
