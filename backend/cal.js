@@ -251,16 +251,25 @@ async function getUser(contestID,contestants){
         );
         contestants.push(c);
     }
-    await loadRatings(contestants);
+   await loadRatings(contestants);
+return result["contest"];
 }
 
 
-
-// Main function to use
-export default async function getDataForContest(contestId){
+// Main function to use when the caller also needs the Codeforces contest phase.
+export async function getContestDataWithMetadata(contestId){
     const contestants = [];
-    await getUser(contestId,contestants)
-    return await predict(contestants, true);
+    const contest = await getUser(contestId, contestants);
+
+    return {
+        contestData: predict(contestants, true),
+        contest
+    };
+}
+
+export default async function getDataForContest(contestId){
+    const { contestData } = await getContestDataWithMetadata(contestId);
+    return contestData;
 }
 // getDataForContest(2191);
 
