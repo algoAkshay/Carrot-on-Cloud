@@ -1,6 +1,16 @@
+import { randomUUID } from "node:crypto";
+
 import pool from "./mysql.js";
 import getDateForContest, { getContestDataWithMetadata } from "../cal.js";
 import redis from "./redis.js";
+
+const RELEASE_LOCK_SCRIPT = `
+    if redis.call("GET", KEYS[1]) == ARGV[1] then
+        return redis.call("DEL", KEYS[1])
+    else
+        return 0
+    end
+`;
 
 async function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -133,10 +143,11 @@ export async function queryContestResults(contestID, userList) {
     try {
         if (await contestNeedsRefresh(contestID)) {
             const lockKey = `lock:contest:${contestID}`;
+            const lockOwner = randomUUID();
 
-            const acquired = await redis.set(lockKey, "1", {
+            const acquired = await redis.set(lockKey, lockOwner, {
                 NX: true,
-                PX: 2 * 60 * 1000,
+                PX: 5 * 60 * 1000,
             });
 
             if (acquired) {
@@ -146,10 +157,13 @@ export async function queryContestResults(contestID, userList) {
                     console.log("Error pushing contest data:", error);
                     throw error;
                 } finally {
-                    await redis.del(lockKey);
+                    await redis.eval(RELEASE_LOCK_SCRIPT, {
+                        keys: [lockKey],
+                        arguments: [lockOwner],
+                    });
                 }
             } else {
-                while ((await redis.get(lockKey)) === "1") {
+                while (await redis.exists(lockKey)) {
                     await sleep(1000);
                 }
             }
