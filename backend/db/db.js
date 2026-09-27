@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import pool from "./mysql.js";
 import getDateForContest, { getContestDataWithMetadata } from "../cal.js";
-import redis from "./redis.js";
+import redis, { isRedisAvailable } from "./redis.js";
 
 const RELEASE_LOCK_SCRIPT = `
     if redis.call("GET", KEYS[1]) == ARGV[1] then
@@ -17,8 +17,11 @@ async function sleep(ms) {
 }
 
 export async function pushContestData(contestId) {
-    const { contestData, contest } = await getContestDataWithMetadata(contestId);
-    const contestIsFinished = contest?.phase === "FINISHED";
+    const { contestData, contest } =
+        await getContestDataWithMetadata(contestId);
+
+    const contestIsFinished =
+        contest?.phase === "FINISHED";
 
     const sql = `
         INSERT INTO contest_results
@@ -35,11 +38,21 @@ export async function pushContestData(contestId) {
     const sleepTime = 100;
     let batchNumber = 0;
 
-    for (let i = 0; i < contestData.length; i += batchSize) {
+    for (
+        let i = 0;
+        i < contestData.length;
+        i += batchSize
+    ) {
         batchNumber++;
 
         const batch = contestData
-            .slice(i, Math.min(contestData.length, i + batchSize))
+            .slice(
+                i,
+                Math.min(
+                    contestData.length,
+                    i + batchSize
+                )
+            )
             .map(user => [
                 contestId,
                 user.handle,
@@ -50,18 +63,28 @@ export async function pushContestData(contestId) {
             ]);
 
         try {
-            console.log(`Inserting batch ${batchNumber}...`);
-            await pool.query(sql, [batch]);
-        } catch (e) {
-            console.log(e);
-            console.log(`Error inserting batch ${batchNumber}`);
-            throw e;
+            console.log(
+                `Inserting batch ${batchNumber}...`
+            );
+
+            await pool.query(
+                sql,
+                [batch]
+            );
+        } catch (error) {
+            console.log(error);
+
+            console.log(
+                `Error inserting batch ${batchNumber}`
+            );
+
+            throw error;
         }
 
         await sleep(sleepTime);
     }
 
-    // Mark the contest as final only after every batch was inserted successfully.
+    // Mark the contest final only after all batches were inserted successfully.
     if (contestIsFinished) {
         await pool.execute(
             `
@@ -75,34 +98,44 @@ export async function pushContestData(contestId) {
 }
 
 async function contestNeedsRefresh(contestId) {
-    const [rows] = await pool.execute(
-        `
-            SELECT
-                MAX(updated_at) AS last_update,
-                MIN(is_final) AS is_final
-            FROM contest_results
-            WHERE contest_id = ?
-        `,
-        [contestId]
-    );
+    const [rows] =
+        await pool.execute(
+            `
+                SELECT
+                    MAX(updated_at) AS last_update,
+                    MIN(is_final) AS is_final
+                FROM contest_results
+                WHERE contest_id = ?
+            `,
+            [contestId]
+        );
 
-    const lastUpdate = rows[0].last_update;
-    const isFinal = Boolean(rows[0].is_final);
+    const lastUpdate =
+        rows[0].last_update;
+
+    const isFinal =
+        Boolean(
+            rows[0].is_final
+        );
 
     // No cached result exists yet.
     if (!lastUpdate) {
         return true;
     }
 
-    // Once a final snapshot has been stored, reuse it permanently.
+    // Once final data is stored, reuse it permanently.
     if (isFinal) {
         return false;
     }
 
-    // While the contest is ongoing / not finalized,
-    // refresh cached results every 5 minutes.
-    const diffMs = Date.now() - new Date(lastUpdate).getTime();
-    const fiveMinutes = 5 * 60 * 1000;
+    const diffMs =
+        Date.now()
+        - new Date(
+            lastUpdate
+        ).getTime();
+
+    const fiveMinutes =
+        5 * 60 * 1000;
 
     return diffMs > fiveMinutes;
 }
@@ -116,60 +149,348 @@ function isDbConnectionError(error) {
     ].includes(error?.code);
 }
 
-function filterContestData(contestId, contestData, userList) {
-    const requestedUsers = new Set(userList);
+function filterContestData(
+    contestId,
+    contestData,
+    userList
+) {
+    const requestedUsers =
+        new Set(userList);
 
     return contestData
-        .filter(user => requestedUsers.has(user.handle))
+        .filter(
+            user =>
+                requestedUsers.has(
+                    user.handle
+                )
+        )
         .map(user => ({
-            contest_id: contestId,
-            handle: user.handle,
-            performance: user.performance,
-            delta: user.delta,
-            rating: user.rating
+            contest_id:
+                contestId,
+
+            handle:
+                user.handle,
+
+            performance:
+                user.performance,
+
+            delta:
+                user.delta,
+
+            rating:
+                user.rating
         }));
 }
 
-async function queryContestResultsWithoutDb(contestID, userList) {
-    const contestData = await getDateForContest(contestID);
-    return filterContestData(contestID, contestData, userList);
+async function queryContestResultsWithoutDb(
+    contestID,
+    userList
+) {
+    const contestData =
+        await getDateForContest(
+            contestID
+        );
+
+    return filterContestData(
+        contestID,
+        contestData,
+        userList
+    );
 }
 
-export async function queryContestResults(contestID, userList) {
-    if (!userList || userList.length === 0) {
+async function tryAcquireContestLock(lockKey) {
+    if (!isRedisAvailable()) {
+        return {
+            status: "unavailable",
+            owner: null
+        };
+    }
+
+    const owner =
+        randomUUID();
+
+    try {
+        const acquired =
+            await redis.set(
+                lockKey,
+                owner,
+                {
+                    NX: true,
+                    PX: 5 * 60 * 1000
+                }
+            );
+
+        if (!acquired) {
+            return {
+                status: "busy",
+                owner: null
+            };
+        }
+
+        return {
+            status: "acquired",
+            owner
+        };
+    } catch (error) {
+        console.error(
+            "Redis lock acquisition failed:",
+            error.message
+        );
+
+        return {
+            status: "unavailable",
+            owner: null
+        };
+    }
+}
+
+async function releaseContestLock(
+    lockKey,
+    owner
+) {
+    if (
+        !owner
+        || !isRedisAvailable()
+    ) {
+        return;
+    }
+
+    try {
+        await redis.eval(
+            RELEASE_LOCK_SCRIPT,
+            {
+                keys: [lockKey],
+                arguments: [owner]
+            }
+        );
+    } catch (error) {
+        console.error(
+            "Redis lock release failed:",
+            error.message
+        );
+    }
+}
+
+async function waitForContestLock(
+    lockKey
+) {
+    while (true) {
+        // If Redis dies while we're waiting,
+        // stop waiting and let the caller recover.
+        if (!isRedisAvailable()) {
+            return;
+        }
+
+        try {
+            const exists =
+                await redis.exists(
+                    lockKey
+                );
+
+            if (!exists) {
+                return;
+            }
+        } catch (error) {
+            console.error(
+                "Redis lock wait failed:",
+                error.message
+            );
+
+            return;
+        }
+
+        await sleep(1000);
+    }
+}
+
+async function refreshContestIfNeeded(
+    contestID
+) {
+    if (
+        !(await contestNeedsRefresh(
+            contestID
+        ))
+    ) {
+        return;
+    }
+
+    const lockKey =
+        `lock:contest:${contestID}`;
+
+    const firstAttempt =
+        await tryAcquireContestLock(
+            lockKey
+        );
+
+    /*
+     * Redis unavailable:
+     *
+     * Continue without distributed locking.
+     * Worst case: two requests compute the same contest.
+     *
+     * Better than making the whole endpoint unavailable.
+     */
+    if (
+        firstAttempt.status
+        === "unavailable"
+    ) {
+        console.log(
+            `Redis unavailable; calculating contest ${contestID} without distributed lock`
+        );
+
+        await pushContestData(
+            contestID
+        );
+
+        return;
+    }
+
+    /*
+     * We acquired the lock.
+     */
+    if (
+        firstAttempt.status
+        === "acquired"
+    ) {
+        try {
+            await pushContestData(
+                contestID
+            );
+        } finally {
+            await releaseContestLock(
+                lockKey,
+                firstAttempt.owner
+            );
+        }
+
+        return;
+    }
+
+    /*
+     * Another request owns the lock.
+     */
+    await waitForContestLock(
+        lockKey
+    );
+
+    /*
+     * IMPORTANT:
+     *
+     * A missing lock does not necessarily mean the
+     * first worker successfully stored the result.
+     *
+     * It could have:
+     * - crashed
+     * - thrown an error
+     * - lost Redis
+     * - exceeded the TTL
+     *
+     * Therefore check MySQL again.
+     */
+    if (
+        !(await contestNeedsRefresh(
+            contestID
+        ))
+    ) {
+        return;
+    }
+
+    /*
+     * Still stale.
+     * Try to become the next worker.
+     */
+    const retryAttempt =
+        await tryAcquireContestLock(
+            lockKey
+        );
+
+    if (
+        retryAttempt.status
+        === "unavailable"
+    ) {
+        console.log(
+            `Redis unavailable after waiting; recalculating contest ${contestID} without distributed lock`
+        );
+
+        await pushContestData(
+            contestID
+        );
+
+        return;
+    }
+
+    if (
+        retryAttempt.status
+        === "busy"
+    ) {
+        /*
+         * Another worker acquired the lock between
+         * our DB check and retry.
+         *
+         * Wait for it once more.
+         */
+        await waitForContestLock(
+            lockKey
+        );
+
+        /*
+         * Re-check one last time.
+         *
+         * If it is STILL stale after another worker
+         * was given a chance, calculate directly.
+         *
+         * This avoids returning empty/stale data if
+         * the second worker also fails.
+         */
+        if (
+            await contestNeedsRefresh(
+                contestID
+            )
+        ) {
+            console.log(
+                `Contest ${contestID} is still stale after waiting; recalculating`
+            );
+
+            await pushContestData(
+                contestID
+            );
+        }
+
+        return;
+    }
+
+    try {
+        await pushContestData(
+            contestID
+        );
+    } finally {
+        await releaseContestLock(
+            lockKey,
+            retryAttempt.owner
+        );
+    }
+}
+
+export async function queryContestResults(
+    contestID,
+    userList
+) {
+    if (
+        !userList
+        || userList.length === 0
+    ) {
         return [];
     }
 
     try {
-        if (await contestNeedsRefresh(contestID)) {
-            const lockKey = `lock:contest:${contestID}`;
-            const lockOwner = randomUUID();
+        await refreshContestIfNeeded(
+            contestID
+        );
 
-            const acquired = await redis.set(lockKey, lockOwner, {
-                NX: true,
-                PX: 5 * 60 * 1000,
-            });
-
-            if (acquired) {
-                try {
-                    await pushContestData(contestID);
-                } catch (error) {
-                    console.log("Error pushing contest data:", error);
-                    throw error;
-                } finally {
-                    await redis.eval(RELEASE_LOCK_SCRIPT, {
-                        keys: [lockKey],
-                        arguments: [lockOwner],
-                    });
-                }
-            } else {
-                while (await redis.exists(lockKey)) {
-                    await sleep(1000);
-                }
-            }
-        }
-
-        const placeholders = userList.map(() => "?").join(",");
+        const placeholders =
+            userList
+                .map(() => "?")
+                .join(",");
 
         const sql = `
             SELECT *
@@ -178,14 +499,22 @@ export async function queryContestResults(contestID, userList) {
               AND handle IN (${placeholders})
         `;
 
-        const [rows] = await pool.execute(sql, [
-            contestID,
-            ...userList
-        ]);
+        const [rows] =
+            await pool.execute(
+                sql,
+                [
+                    contestID,
+                    ...userList
+                ]
+            );
 
         return rows;
     } catch (error) {
-        if (isDbConnectionError(error)) {
+        if (
+            isDbConnectionError(
+                error
+            )
+        ) {
             console.log(
                 "MySQL unavailable, calculating contest data without DB cache:",
                 error.code
@@ -197,7 +526,11 @@ export async function queryContestResults(contestID, userList) {
             );
         }
 
-        console.log("Query error:", error);
+        console.log(
+            "Query error:",
+            error
+        );
+
         throw error;
     }
 }
