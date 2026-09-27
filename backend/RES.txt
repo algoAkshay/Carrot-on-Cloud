@@ -5,6 +5,7 @@ create table contest_results
     performance VARCHAR(10)                         not null,
     delta       VARCHAR(10)                         not null,
     rating      int                                 not null,
+    is_final    tinyint(1) default 0                not null,
     created_at  timestamp default current_timestamp not null,
     updated_at  timestamp default current_timestamp not null on update current_timestamp,
     constraint contest_results_pk
