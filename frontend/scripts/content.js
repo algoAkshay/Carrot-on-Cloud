@@ -102,11 +102,10 @@ function updatePage(res){
     }
 }
 
-const testURL="http://127.0.0.1:3000/contest";
-// const apiURL="http://127.0.0.1:3000/contest";
+const apiURL = `${globalThis.CARROT_CONFIG.API_BASE_URL}/contest`;
 
 if (contestId > 0 && queryData.userList.length > 0) {
-    fetch(testURL,{
+    fetch(apiURL,{
         method:"POST",
         headers: {
             'Content-Type': 'application/json', // Indicate the content type
