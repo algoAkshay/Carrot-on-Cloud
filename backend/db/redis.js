@@ -1,25 +1,41 @@
 import "dotenv/config";
-import { createClient } from 'redis';
-
-
+import { createClient } from "redis";
 
 const client = createClient({
-    username: process.env.REDIS_USERNAME,       // your redis username
-    password: process.env.REDIS_PASSWORD,       // your redis password
+    username: process.env.REDIS_USERNAME,
+    password: process.env.REDIS_PASSWORD,
     socket: {
-        host: process.env.REDIS_HOST,           // your redis host
-        port: process.env.REDIS_PORT    // your redis port
+        host: process.env.REDIS_HOST,
+        port: process.env.REDIS_PORT
     }
 });
 
-client.on('error', err => console.log('Redis Client Error', err));
+let redisAvailable = false;
+
+client.on("ready", () => {
+    redisAvailable = true;
+    console.log("✅ Redis connected");
+});
+
+client.on("error", (error) => {
+    redisAvailable = false;
+    console.error("Redis Client Error:", error.message);
+});
+
+client.on("end", () => {
+    redisAvailable = false;
+    console.log("Redis connection closed");
+});
 
 try {
     await client.connect();
-}catch(e) {
-    console.log(e);
+} catch (error) {
+    redisAvailable = false;
+    console.error("Redis unavailable:", error.message);
 }
-// await client.flushAll('SYNC');
-console.log("✅ RedIs is connected !!!!")
-export  default  client;
 
+export function isRedisAvailable() {
+    return redisAvailable && client.isReady;
+}
+
+export default client;
